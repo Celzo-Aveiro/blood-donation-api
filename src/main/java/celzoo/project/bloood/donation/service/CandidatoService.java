@@ -5,6 +5,8 @@ import celzoo.project.bloood.donation.repository.CandidatoRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.function.Predicate;
@@ -43,10 +45,16 @@ public class CandidatoService {
 
         return candidatos.stream()
                 .collect(Collectors.groupingBy(candidato -> {
-                            int idade = LocalDate.now().getYear() - candidato.getDataNasc().getYear();
-                            return idade/10*10;
-                        },
-                        Collectors.averagingDouble(candidato -> candidato.getPeso() / Math.pow(candidato.getAltura(), 2))));
+                    int idade = LocalDate.now().getYear() - candidato.getDataNasc().getYear();
+                    return idade / 10 * 10;
+                }, Collectors.mapping(candidato -> candidato.getPeso() / Math.pow(candidato.getAltura(), 2),
+                        Collectors.collectingAndThen(
+                                Collectors.averagingDouble(Double::doubleValue),
+                                avg -> BigDecimal.valueOf(avg)
+                                        .setScale(2, RoundingMode.HALF_UP)
+                                        .doubleValue()
+                        )
+                )));
     }
 
     public Map<String, Double> calcularPercentualObesosPorSexo() {
@@ -70,8 +78,12 @@ public class CandidatoService {
         double percentualObesosHomens = (double) obesosHomens / totalHomens * 100;
         double percentualObesosMulheres = (double) obesasMulheres / totalMulheres * 100;
 
+        // Arredondar para duas casas decimais
+        percentualObesosHomens = Math.round(percentualObesosHomens * 100.0) / 100.0;
+        percentualObesosMulheres = Math.round(percentualObesosMulheres * 100.0) / 100.0;
+
         // Criar mapa com os resultados
-        Map<String, Double> percentualObesosPorSexo = Map.of(
+          Map<String, Double> percentualObesosPorSexo = Map.of(
                 "Homens", percentualObesosHomens,
                 "Mulheres", percentualObesosMulheres
         );
@@ -83,11 +95,16 @@ public class CandidatoService {
         List<Candidato> candidatos = candidatoRepository.findAll();
 
         // Agrupar candidatos por tipo sanguíneo e calcular a média de idade
-        Map<String, Double> mediaIdadePorTipoSanguineo = candidatos.stream()
-                .collect(Collectors.groupingBy(Candidato::getTipoSanguineo,
-                        Collectors.averagingDouble(candidato -> LocalDate.now().getYear() - candidato.getDataNasc().getYear())));
 
-        return mediaIdadePorTipoSanguineo;
+        return candidatos.stream()
+                .collect(Collectors.groupingBy(Candidato::getTipoSanguineo,
+                        Collectors.collectingAndThen(
+                                Collectors.averagingDouble(candidato -> {
+                                    int idade = LocalDate.now().getYear() - candidato.getDataNasc().getYear();
+                                    return (double) idade;
+                                }),
+                                avg -> Math.round(avg * 100.0) / 100.0
+                        )));
     }
 
     public Map<String, Long> contarDoadoresPorTipoSanguineo() {
